@@ -1,29 +1,65 @@
-# My Rust Project
+# Instruction Set Validator
 
-This is a simple Rust project that demonstrates how to set up a basic Rust application.
+This utility analyzes x86_64 ELF binaries to determine which CPU instruction sets (such as SSE, AVX, AVX2, AVX-512, etc.) are used by the binary. It is useful for verifying binary compatibility with target CPUs, especially when deploying to environments with varying hardware capabilities.
+
+## Features
+- Detects and lists all CPU instruction sets used by a given binary.
+- Accepts either a single binary file or a directory.
+- If a directory is specified, recursively finds all executable files and reports the union of all instruction sets used.
+- Supports Linux (uses Unix file permissions to detect executables).
 
 ## Getting Started
 
-To get started with this project, you'll need to have Rust and Cargo installed on your machine. You can install Rust by following the instructions at [rust-lang.org](https://www.rust-lang.org/tools/install).
+### Downloading the Sources
 
-## Building the Project
+Clone the repository:
 
-To build the project, navigate to the project directory and run the following command:
-
-```
-cargo build
-```
-
-## Running the Application
-
-After building the project, you can run the application with the following command:
-
-```
-cargo run
+```sh
+git clone <repository-url>
+cd instruction_set_validator
 ```
 
-## Project Structure
+Replace `<repository-url>` with the actual URL of the repository if not already cloned.
 
-- `src/main.rs`: The entry point of the application.
-- `Cargo.toml`: The configuration file for the project.
-- `README.md`: Documentation for the project.
+### Building
+
+Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed (edition 2021 or newer).
+
+Build the project in release mode:
+
+```sh
+cargo build --release
+```
+
+The compiled binary will be located in `target/release/instruction-set-validator`.
+
+## Usage
+
+```sh
+cargo run --release -- <path-to-binary-or-folder>
+```
+- If you provide a file, it will print the instruction sets used by that binary.
+- If you provide a directory, it will recursively scan for executables and print the union of all instruction sets used.
+
+## Example Output
+```
+Binary ./my_binary uses the following CPU features:
+  SSE2
+  AVX
+  AVX2
+```
+Or for a directory:
+```
+All binaries in ./bin/ use the following CPU features (union):
+  SSE2
+  AVX
+  AVX2
+  AVX512F
+```
+
+## Requirements
+- Rust (edition 2021)
+- Linux (for directory scanning and executable detection)
+
+## License
+MIT
