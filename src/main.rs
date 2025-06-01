@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::path::Path;
 
 use iced_x86::{CpuidFeature, Decoder, DecoderOptions};
 use object::{Object, ObjectSection};
@@ -9,24 +9,81 @@ use object::{Object, ObjectSection};
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        return Err("Usage: <path-to-binary>".to_string().into());
+        return Err("Usage: <path-to-binary-or-folder>".to_string().into());
     }
-    let file_path = &args[1];
+    let input_path = &args[1];
+    let path = Path::new(input_path);
 
-    let used_features = detect_instruction_sets(file_path)?;
+    let mut binaries = Vec::new();
+    if path.is_file() {
+        binaries.push(input_path.to_string());
+    } else if path.is_dir() {
+        find_executables_recursively(path, &mut binaries)?;
+    } else {
+        return Err(format!("Path '{}' does not exist", input_path).into());
+    }
 
-    println!("\nBinary uses the following CPU features:");
-    for f in &used_features {
-        println!("- {:?}", f);
+    if binaries.is_empty() {
+        println!("No executables found in {}", input_path);
+        return Ok(());
+    }
+
+    if path.is_file() {
+        let used_features = detect_instruction_sets(&binaries[0])?;
+        println!("\nBinary {input_path} uses the following CPU features:");
+        for f in &used_features {
+            println!("  {:?}", f);
+        }
+    } else {
+        let mut all_features = [false; 256];
+        for file_path in &binaries {
+            println!(" - analyzing {}", file_path);
+            let used_features = detect_instruction_sets(file_path)?;
+            for (i, used) in used_features.iter().enumerate() {
+                if *used {
+                    all_features[i] = true;
+                }
+            }
+        }
+        let features: Vec<CpuidFeature> = all_features.iter().enumerate().filter_map(|(i, used)| {
+            if *used {
+                Some(unsafe { std::mem::transmute::<u8, CpuidFeature>(i as u8) })
+            } else {
+                None
+            }
+        }).collect();
+        println!("\nAll binaries in {input_path} use the following CPU features (union):");
+        for f in &features {
+            println!("  {:?}", f);
+        }
     }
     Ok(())
 }
 
-fn detect_instruction_sets(path: &str) -> Result<HashSet<CpuidFeature>, Box<dyn Error>> {
+fn find_executables_recursively(dir: &Path, binaries: &mut Vec<String>) -> Result<(), Box<dyn Error>> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            find_executables_recursively(&path, binaries)?;
+        } else if path.is_file() {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = entry.metadata()?;
+            let perm = meta.permissions();
+            // Check if owner, group, or others have execute permission
+            if perm.mode() & 0o111 != 0 {
+                binaries.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn detect_instruction_sets(path: &str) -> Result<[bool; 256], Box<dyn Error>> {
     let binary = fs::read(path)?;
     let obj_file = object::File::parse(&*binary)?;
 
-    let mut features = HashSet::new();
+    let mut features = [false; 256];
 
     for section in obj_file.sections() {
         if section.kind() != object::SectionKind::Text {
@@ -42,7 +99,9 @@ fn detect_instruction_sets(path: &str) -> Result<HashSet<CpuidFeature>, Box<dyn 
         let mut decoder = Decoder::with_ip(64, bytes, addr, DecoderOptions::NONE);
         while decoder.can_decode() {
             let instr = decoder.decode();
-            features.extend(instr.cpuid_features().iter());
+            for feature in instr.cpuid_features() {
+                features[unsafe { std::mem::transmute::<CpuidFeature, u8>(*feature) } as usize] = true;
+            }
         }
     }
 
