@@ -38,20 +38,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut all_features = [false; 256];
         for file_path in &binaries {
             println!(" - analyzing {}", file_path);
-            let used_features = detect_instruction_sets(file_path)?;
-            for (i, used) in used_features.iter().enumerate() {
-                if *used {
-                    all_features[i] = true;
+            match detect_instruction_sets(file_path) {
+                Ok(used_features) => {
+                    for (i, used) in used_features.iter().enumerate() {
+                        if *used {
+                            all_features[i] = true;
+                        }
+                    }
+                }
+                Err(e) => {
+                    if e.downcast_ref::<object::Error>().is_some() {
+                        // Ignore non-ELF or unsupported files
+                        println!("   Skipping non-ELF or unsupported file: {}", file_path);
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
-        let features: Vec<CpuidFeature> = all_features.iter().enumerate().filter_map(|(i, used)| {
-            if *used {
-                Some(unsafe { std::mem::transmute::<u8, CpuidFeature>(i as u8) })
-            } else {
-                None
-            }
-        }).collect();
+        let features: Vec<CpuidFeature> = all_features
+            .iter()
+            .enumerate()
+            .filter_map(|(i, used)| {
+                if *used {
+                    Some(unsafe { std::mem::transmute::<u8, CpuidFeature>(i as u8) })
+                } else {
+                    None
+                }
+            })
+            .collect();
         println!("\nAll binaries in {input_path} use the following CPU features (union):");
         for f in &features {
             println!("  {:?}", f);
@@ -60,7 +75,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn find_executables_recursively(dir: &Path, binaries: &mut Vec<String>) -> Result<(), Box<dyn Error>> {
+fn find_executables_recursively(
+    dir: &Path,
+    binaries: &mut Vec<String>,
+) -> Result<(), Box<dyn Error>> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -100,7 +118,8 @@ fn detect_instruction_sets(path: &str) -> Result<[bool; 256], Box<dyn Error>> {
         while decoder.can_decode() {
             let instr = decoder.decode();
             for feature in instr.cpuid_features() {
-                features[unsafe { std::mem::transmute::<CpuidFeature, u8>(*feature) } as usize] = true;
+                features[unsafe { std::mem::transmute::<CpuidFeature, u8>(*feature) } as usize] =
+                    true;
             }
         }
     }
