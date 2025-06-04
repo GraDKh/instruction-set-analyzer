@@ -1,0 +1,70 @@
+name: Release Binary
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  release:
+    name: Build and Release Binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: instruction-set-analyzer-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          instruction-set-analyzer-cargo-
+
+    - name: Build release binary
+      run: cargo build --release --verbose
+
+    - name: Get next version
+      id: semver
+      uses: paulhatch/semantic-version@v5.0.0
+      with:
+        tag_prefix: "v"
+        major_version_tag: "v1"
+        minor_version_tag: "v0"
+        patch_version_tag: "v0.0"
+        initial_version: "v0.0.1"
+        bump_patch: true
+        search_commit_messages: false
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.semver.outputs.version }}
+        release_name: Release ${{ steps.semver.outputs.version }}
+        draft: false
+        prerelease: false
+
+    - name: Upload binary to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./target/release/instruction-set-validator
+        asset_name: instruction-set-validator-${{ steps.semver.outputs.version }}-linux
+        asset_content_type: application/octet-stream
