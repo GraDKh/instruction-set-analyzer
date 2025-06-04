@@ -27,14 +27,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         return Err(format!("Path '{}' is neither a file nor a directory", input_path).into());
     }
-   
+
     Ok(())
 }
 
 fn print_features(features: &[bool; 256]) {
     for (i, &used) in features.iter().enumerate() {
         if used {
-            let feature = unsafe { std::mem::transmute::<u8, CpuidFeature>(i as u8) } ;
+            let feature = unsafe { std::mem::transmute::<u8, CpuidFeature>(i as u8) };
             println!("  {:?}", feature);
         }
     }
@@ -56,7 +56,10 @@ fn process_code_files_recursively(
     Ok(())
 }
 
-fn detect_instruction_sets(path: impl AsRef<Path>, features: &mut [bool; 256]) -> Result<(), Box<dyn Error>> {
+fn detect_instruction_sets(
+    path: impl AsRef<Path>,
+    features: &mut [bool; 256],
+) -> Result<(), Box<dyn Error>> {
     println!("Processing binary: {:?}", path.as_ref());
     let binary = fs::read(path)?;
 
@@ -64,9 +67,7 @@ fn detect_instruction_sets(path: impl AsRef<Path>, features: &mut [bool; 256]) -
         Ok(FileKind::Elf32 | FileKind::Elf64 | FileKind::DyldCache) => {
             detect_features_in_object(&binary, features)
         }
-        Ok(FileKind::Archive) => {
-            detect_features_in_archive(&binary, features)
-        }
+        Ok(FileKind::Archive) => detect_features_in_archive(&binary, features),
         _ => {
             // Ignore unknown files;
             Ok(())
@@ -74,7 +75,10 @@ fn detect_instruction_sets(path: impl AsRef<Path>, features: &mut [bool; 256]) -
     }
 }
 
-fn detect_features_in_object(binary: &[u8], features: &mut [bool; 256]) -> Result<(), Box<dyn Error>> {
+fn detect_features_in_object(
+    binary: &[u8],
+    features: &mut [bool; 256],
+) -> Result<(), Box<dyn Error>> {
     let obj_file = object::File::parse(binary)?;
     for section in obj_file.sections() {
         process_section(features, &section);
@@ -84,7 +88,7 @@ fn detect_features_in_object(binary: &[u8], features: &mut [bool; 256]) -> Resul
 
 fn detect_features_in_archive(
     binary: &[u8],
-    features: &mut [bool; 256]
+    features: &mut [bool; 256],
 ) -> Result<(), Box<dyn Error>> {
     let archive = ArchiveFile::parse(binary)?;
     for member in archive.members() {
